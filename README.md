@@ -9,7 +9,7 @@ as the build process starts as soon as the file is saved rather than when Unity 
 #### Usage:
 1) Place the script in Assets/Editor/
 
-2) In the Unity menu bar, go to Window > Asset Management > Background Script Builder and place
+2) In the Unity menu bar, go to `Window > Asset Management > Background Script Builder` and place
    the window that opens somewhere in your editor.
 
    Due to the way that Unity handles GUI elements (which is usually a good thing), the window
