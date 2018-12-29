@@ -16,7 +16,7 @@ as the build process starts as soon as the file is saved rather than when Unity 
 
    Due to the way that Unity handles GUI elements (which is usually a good thing), the window
    must exist somewhere in the editor for this to work (eg, it has to exist as a tab somewhere
-   in your layout, but the tab doesn't need to be open).
+   in your layout), and unfortunately must stay open.
 
 4) Change the `Script Folder` field to wherever you keep your scripts (relative to `Assets`).
    Note that the script watches all child folders of the specified folder as well.
