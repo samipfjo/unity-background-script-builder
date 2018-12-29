@@ -18,4 +18,5 @@ as the build process starts as soon as the file is saved rather than when Unity 
 
 3) Change the `Script Folder` field to wherever you keep your scripts (relative to `Assets`).
    Note that the script watches all child folders of the specified folder as well.
+   
    To watch the entire Assets folder, change it to `/`
