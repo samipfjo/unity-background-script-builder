@@ -38,7 +38,7 @@ namespace BackgroundScriptBuilder
          * must exist somewhere in the editor for this to work (eg, it has to exist as a tab somewhere
          * in your layout, but the tab doesn't need to be open).
          */
-
+        
         ScriptChangeWatcher scriptChangeWatcher;
 
         bool doBackgroundBuilds = true;
@@ -53,27 +53,34 @@ namespace BackgroundScriptBuilder
             window.Show();
         }
 
-        void OnGUI()
+        public void OnEnable()
         {
-            // This conditional is true when the window is first opened and every time scripts are rebuilt
-            if (doBackgroundBuilds && scriptChangeWatcher == default(ScriptChangeWatcher)) {
-                if (doBackgroundBuilds) {
-                    InitializeWatcher();
-                }
+            MaybeInitializeWatcher();
+            AssemblyReloadEvents.afterAssemblyReload += ReloadInitialize;
+        }
+
+        public void OnDisable()
+        {
+            if (scriptChangeWatcher != default(ScriptChangeWatcher) && scriptChangeWatcher != null) {
+                scriptChangeWatcher.Destroy();
             }
 
+            try {
+                AssemblyReloadEvents.afterAssemblyReload -= ReloadInitialize;
+
+            } catch (Exception ex) {
+                Debug.Log(ex.ToString());
+            }
+        }
+
+        void OnGUI()
+        {
             EditorGUI.BeginChangeCheck();
             doBackgroundBuilds = EditorGUILayout.BeginToggleGroup("Enable Background Building", doBackgroundBuilds);
 
             if (EditorGUI.EndChangeCheck()) {
-                if (doBackgroundBuilds) {
-                    InitializeWatcher();
-
-                } else {
-                    if (scriptChangeWatcher != default(ScriptChangeWatcher)) {
-                        scriptChangeWatcher.Destroy();
-                        hasInitialized = false;
-                    }
+                if (!MaybeInitializeWatcher()) {
+                    hasInitialized = false;
                 }
             }
 
@@ -81,20 +88,27 @@ namespace BackgroundScriptBuilder
             scriptFolderPath = EditorGUILayout.TextField("Script Folder", scriptFolderPath);
 
             if (EditorGUI.EndChangeCheck()) {
-                if (doBackgroundBuilds) {
-                    InitializeWatcher();
-                }
+                MaybeInitializeWatcher();
             }
 
             EditorGUILayout.EndToggleGroup();
         }
 
-        void InitializeWatcher()
+        void ReloadInitialize()
+        {
+            MaybeInitializeWatcher();
+        }
+
+        bool MaybeInitializeWatcher()
         {
             /* Handle parsing of script folder path and manage watcher state */
 
             if (scriptChangeWatcher != default(ScriptChangeWatcher)) {
                 scriptChangeWatcher.Destroy();
+            }
+
+            if (!doBackgroundBuilds) {
+                return false;
             }
 
             if (scriptFolderPath != "") {
@@ -123,6 +137,8 @@ namespace BackgroundScriptBuilder
                     }
                 }
             }
+
+            return true;
         }
     }
 
