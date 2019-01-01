@@ -72,10 +72,7 @@ namespace BackgroundScriptBuilder
 
             if (EditorGUI.EndChangeCheck()) {
                 builderApp.SaveSettings();
-
-                (bool, string) result = builderApp.MaybeInitializeWatcher();
-                builderApp.status = result.Item2;
-                builderApp.hasInitialized = result.Item1;
+                builderApp.MaybeInitializeWatcher();
             }
 
             EditorGUI.BeginChangeCheck();
@@ -85,10 +82,7 @@ namespace BackgroundScriptBuilder
 
             if (EditorGUI.EndChangeCheck()) {
                 builderApp.SaveSettings();
-
-                (bool, string) result = builderApp.MaybeInitializeWatcher();
-                builderApp.status = result.Item2;
-                builderApp.hasInitialized = result.Item1;
+                builderApp.MaybeInitializeWatcher();
             }
 
             EditorGUILayout.Separator();
@@ -132,24 +126,26 @@ namespace BackgroundScriptBuilder
             LoadSettings();
 
             if (!hasInitialized) {
-                (bool, string) result = MaybeInitializeWatcher();
-                status = result.Item2;
-                hasInitialized = result.Item1;
+                MaybeInitializeWatcher();
             }
 
-            AssemblyReloadEvents.afterAssemblyReload += ReloadInitialize;
+            AssemblyReloadEvents.afterAssemblyReload += MaybeReloadInitialize;
         }
 
         public void OnDisable()
         {
             SaveSettings();
-        
+
+            if (EditorApplication.isPlayingOrWillChangePlaymode) {
+                EditorApplication.playModeStateChanged += PlayStateInitialize;
+            }
+
             if (scriptChangeWatcher != default(ScriptChangeWatcher) && scriptChangeWatcher != null) {
                 scriptChangeWatcher.Destroy();
             }
 
             try {
-                AssemblyReloadEvents.afterAssemblyReload -= ReloadInitialize;
+                AssemblyReloadEvents.afterAssemblyReload -= MaybeReloadInitialize;
 
             } catch (Exception ex) {
                 Debug.LogError(ex.Message);
@@ -159,14 +155,28 @@ namespace BackgroundScriptBuilder
             hasInitialized = false;
         }
 
-        void ReloadInitialize()
+        void PlayStateInitialize(PlayModeStateChange change)
         {
-            if (!hasInitialized) {
-                hasInitialized = MaybeInitializeWatcher().Item1;
+            if (change == PlayModeStateChange.ExitingPlayMode) {
+                MaybeReloadInitialize();
+                EditorApplication.playModeStateChanged -= PlayStateInitialize;
             }
         }
 
-        public (bool, string) MaybeInitializeWatcher()
+        void MaybeReloadInitialize()
+        {
+            if (!hasInitialized) {
+                MaybeInitializeWatcher();
+            }
+        }
+
+        void SetState(bool _initialized, string _status)
+        {
+            hasInitialized = _initialized;
+            status = _status;
+        }
+
+        public void MaybeInitializeWatcher()
         {
             /* Handle parsing of script folder path and manage watcher state */
 
@@ -177,12 +187,14 @@ namespace BackgroundScriptBuilder
             }
 
             if (!doBackgroundBuilds) {
-                return (false, "Disabled");
+                SetState(false, "Disabled");
+                return;
             }
 
             if (scriptFolderPath == "") {
-                return (false, "Disabled: No path specified");
-
+                SetState(false, "Disabled: No path specified");
+                return;
+            
             } else {
                 if (scriptFolderPath == ".") {
                     scriptFolderPath = "/";
@@ -203,17 +215,19 @@ namespace BackgroundScriptBuilder
                 }
 
                 if (!Directory.Exists(scriptFolderPath)) {
-                    return (false, "Disabled: Path does not exist");
+                    SetState(false, "Disabled: Path does not exist");
+                    return;
                 }
 
                 if ((scriptFolderPath != "Assets/" || !assetsPrepended)) {
                     scriptChangeWatcher = new ScriptChangeWatcher();
                     if (!scriptChangeWatcher.Initialize(scriptFolderPath)) {
-                        return (false, "Editor does not have permission to access folder \"" + scriptFolderPath + "\"");
+                        SetState(false, "Editor does not have permission to access folder \"" + scriptFolderPath + "\"");
+                        return;
                     }
                 }
-                
-                return (true, "Watching \"" + scriptFolderPath + "\" and its children");
+
+                SetState(true, "Watching \"" + scriptFolderPath + "\" and its children");
             }
         }
     }
