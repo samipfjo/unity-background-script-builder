@@ -21,7 +21,6 @@ using UnityEditor;
 
 namespace BackgroundScriptBuilder
 {
-
     public class BackgroundScriptBuilderWindow : EditorWindow
     {
         /* This Unity editor script listens for changes to .cs files in tthe provided folder and triggers
@@ -34,33 +33,117 @@ namespace BackgroundScriptBuilder
          * In the Unity menu bar, go to Window > Asset Management > Background Script Builder and place
          * the window that opens somewhere in your editor.
          * 
-         * Due to the way that Unity handles GUI elements (which is usually a good thing), the window
-         * must exist somewhere in the editor for this to work (eg, it has to exist as a tab somewhere
-         * in your layout, but the tab doesn't need to be open).
+         * Due to the way that Unity handles GUI elements, the window must exist somewhere in the editor
+         * for this to work (eg, it has to exist as a tab somewhere in your layout, but the tab doesn't
+         * need to be visible).
          */
-        
-        ScriptChangeWatcher scriptChangeWatcher;
 
-        bool doBackgroundBuilds = true;
-        string scriptFolderPath = "Scripts/";
-        
-        bool hasInitialized = false;
+        [SerializeField]
+        private BackgroundScriptBuilderApplication builderApp = null;
 
         [MenuItem("Window/Asset Management/Background Script Builder")]
-        static void Init()
+        public static void Init()
         {
-            BackgroundScriptBuilderWindow window = (BackgroundScriptBuilderWindow)GetWindow(typeof(BackgroundScriptBuilderWindow));
-            window.Show();
+            EditorWindow.GetWindow(typeof(BackgroundScriptBuilderWindow));
         }
 
-        public void OnEnable()
+        void OnEnable()
         {
-            MaybeInitializeWatcher();
+            if (builderApp == null) {
+                builderApp = (BackgroundScriptBuilderApplication) FindObjectOfType(typeof(BackgroundScriptBuilderApplication));
+
+                if (builderApp == null) {
+                    builderApp = ScriptableObject.CreateInstance<BackgroundScriptBuilderApplication>();
+                }
+            }
+        }
+
+        void OnGUI()
+        {
+            EditorGUI.BeginChangeCheck();
+
+            EditorGUILayout.BeginVertical("Box");
+            EditorGUILayout.Separator();
+
+            builderApp.doBackgroundBuilds = EditorGUILayout.BeginToggleGroup("Enable Background Building", builderApp.doBackgroundBuilds);
+
+            EditorGUILayout.Separator();
+            EditorGUILayout.Separator();
+
+            if (EditorGUI.EndChangeCheck()) {
+                builderApp.SaveSettings();
+
+                (bool, string) result = builderApp.MaybeInitializeWatcher();
+                builderApp.status = result.Item2;
+                builderApp.hasInitialized = result.Item1;
+            }
+
+            EditorGUI.BeginChangeCheck();
+
+            EditorGUIUtility.labelWidth = 90;
+            builderApp.scriptFolderPath = EditorGUILayout.TextField("Script Folder", builderApp.scriptFolderPath);
+
+            if (EditorGUI.EndChangeCheck()) {
+                builderApp.SaveSettings();
+
+                (bool, string) result = builderApp.MaybeInitializeWatcher();
+                builderApp.status = result.Item2;
+                builderApp.hasInitialized = result.Item1;
+            }
+
+            EditorGUILayout.Separator();
+            EditorGUILayout.Separator();
+
+            EditorGUILayout.LabelField("Status", new GUIStyle() { fontStyle = UnityEngine.FontStyle.Bold } );
+            EditorGUILayout.LabelField(builderApp.status, new GUIStyle() { wordWrap = true, padding = new RectOffset(4, 0, 0, 0) } );
+
+            EditorGUILayout.EndToggleGroup();
+
+            EditorGUILayout.Separator();
+            EditorGUILayout.EndVertical();
+        }
+    }
+
+    public class BackgroundScriptBuilderApplication : ScriptableObject
+    {
+        public string status;
+        public bool hasInitialized;
+        public bool doBackgroundBuilds = false;
+        public string scriptFolderPath = "";
+
+        private ScriptChangeWatcher scriptChangeWatcher;
+
+        private string settingsPrefix = "wwsoft.backgroundscriptbuilder.";
+
+        public void SaveSettings()
+        {
+            EditorPrefs.SetBool(settingsPrefix + "enabled", doBackgroundBuilds);
+            EditorPrefs.SetString(settingsPrefix + "script_path", scriptFolderPath);
+        }
+
+        public void LoadSettings()
+        {
+            doBackgroundBuilds = EditorPrefs.GetBool(settingsPrefix + "enabled");
+            scriptFolderPath = EditorPrefs.GetString(settingsPrefix + "script_path");
+        }
+
+        public void OnEnable() 
+        {
+            LoadSettings();
+
+            if (!hasInitialized) {
+                (bool, string) result = MaybeInitializeWatcher();
+                status = result.Item2;
+                hasInitialized = result.Item1;
+            }
+
             AssemblyReloadEvents.afterAssemblyReload += ReloadInitialize;
         }
 
         public void OnDisable()
         {
+            SaveSettings();
+        
             if (scriptChangeWatcher != default(ScriptChangeWatcher) && scriptChangeWatcher != null) {
                 scriptChangeWatcher.Destroy();
             }
@@ -69,49 +152,42 @@ namespace BackgroundScriptBuilder
                 AssemblyReloadEvents.afterAssemblyReload -= ReloadInitialize;
 
             } catch (Exception ex) {
-                Debug.Log(ex.ToString());
-            }
-        }
-
-        void OnGUI()
-        {
-            EditorGUI.BeginChangeCheck();
-            doBackgroundBuilds = EditorGUILayout.BeginToggleGroup("Enable Background Building", doBackgroundBuilds);
-
-            if (EditorGUI.EndChangeCheck()) {
-                if (!MaybeInitializeWatcher()) {
-                    hasInitialized = false;
-                }
+                Debug.LogError(ex.Message);
             }
 
-            EditorGUI.BeginChangeCheck();
-            scriptFolderPath = EditorGUILayout.TextField("Script Folder", scriptFolderPath);
-
-            if (EditorGUI.EndChangeCheck()) {
-                MaybeInitializeWatcher();
-            }
-
-            EditorGUILayout.EndToggleGroup();
+            status = "Disabled";
+            hasInitialized = false;
         }
 
         void ReloadInitialize()
         {
-            MaybeInitializeWatcher();
+            if (!hasInitialized) {
+                hasInitialized = MaybeInitializeWatcher().Item1;
+            }
         }
 
-        bool MaybeInitializeWatcher()
+        public (bool, string) MaybeInitializeWatcher()
         {
             /* Handle parsing of script folder path and manage watcher state */
+
+            LoadSettings();
 
             if (scriptChangeWatcher != default(ScriptChangeWatcher)) {
                 scriptChangeWatcher.Destroy();
             }
 
             if (!doBackgroundBuilds) {
-                return false;
+                return (false, "Disabled");
             }
 
-            if (scriptFolderPath != "") {
+            if (scriptFolderPath == "") {
+                return (false, "Disabled: No path specified");
+
+            } else {
+                if (scriptFolderPath == ".") {
+                    scriptFolderPath = "/";
+                }
+
                 if (scriptFolderPath.StartsWith("/")) {
                     scriptFolderPath = scriptFolderPath.Substring(1);
                 }
@@ -126,25 +202,26 @@ namespace BackgroundScriptBuilder
                     scriptFolderPath = "Assets" + (scriptFolderPath.StartsWith("/") ? "" : "/") + scriptFolderPath;
                 }
 
-                if ((scriptFolderPath != "Assets/" || !assetsPrepended) && Directory.Exists(scriptFolderPath)) {
-                    scriptChangeWatcher = new ScriptChangeWatcher();
+                if (!Directory.Exists(scriptFolderPath)) {
+                    return (false, "Disabled: Path does not exist");
+                }
 
-                    if (scriptChangeWatcher.Initialize(scriptFolderPath)) {
-                        if (!hasInitialized) {
-                            Debug.Log("Now watching " + scriptFolderPath + " and its subdirectories");
-                        }
-                        hasInitialized = true;
+                if ((scriptFolderPath != "Assets/" || !assetsPrepended)) {
+                    scriptChangeWatcher = new ScriptChangeWatcher();
+                    if (!scriptChangeWatcher.Initialize(scriptFolderPath)) {
+                        return (false, "Editor does not have permission to access folder \"" + scriptFolderPath + "\"");
                     }
                 }
+                
+                return (true, "Watching \"" + scriptFolderPath + "\" and its children");
             }
-
-            return true;
         }
     }
 
     public class ScriptChangeWatcher
     {
-        FileSystemWatcher watcher;
+        private FileSystemWatcher watcher = null;
+        private FileSystemEventHandler eventHandler = null;
 
         public bool Initialize(string scriptFolder)
         {
@@ -152,27 +229,33 @@ namespace BackgroundScriptBuilder
              * a .cs file is modified */
 
             try {
+                if (eventHandler == null) {
+                    eventHandler = new FileSystemEventHandler(OnChanged);
+                }
+
+                if (watcher != null) {
+                    watcher.Dispose();
+                }
+
                 watcher = new FileSystemWatcher(scriptFolder, "*.cs") {
                     NotifyFilter = NotifyFilters.LastWrite,
                     IncludeSubdirectories = true
                 };
 
-                watcher.Changed += new FileSystemEventHandler(OnChanged);
+                watcher.Changed += eventHandler;
                 watcher.EnableRaisingEvents = true;
 
                 return true;
 
             } catch (System.UnauthorizedAccessException) {
-                Debug.LogWarning("Editor does not have permission to access folder '" + scriptFolder + "'");
                 watcher.Dispose();
-
                 return false;
             }
         }
 
         public void Destroy()
         {
-            if (watcher != default(FileSystemWatcher)) {
+            if (watcher != default(FileSystemWatcher) && watcher != null) {
                 watcher.Dispose();
             }
         }
@@ -185,10 +268,7 @@ namespace BackgroundScriptBuilder
               
             try {
                 AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
-
-                EditorApplication.update += () => {
-                    EditorApplication.update -= ScriptReloadTask;
-                };
+                EditorApplication.update -= ScriptReloadTask;
 
             } catch (Exception ex) {
                 Debug.LogError(ex.Message);
