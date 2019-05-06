@@ -2,7 +2,7 @@
 Automatically builds C# scripts when they change without having to alt+tab into Unity
 
 
-This editor script listens for changes to .cs files in tthe provided folder and triggers
+This editor script listens for changes to .cs files in the provided folder and triggers
 a script rebuild when they do. It is meant to slightly improve quality of life for developers,
 as the build process starts as soon as the file is saved rather than when Unity gains focus.
 
