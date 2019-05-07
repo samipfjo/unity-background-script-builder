@@ -23,7 +23,7 @@ namespace BackgroundScriptBuilder
 {
     public class BackgroundScriptBuilderWindow : EditorWindow
     {
-        /* This Unity editor script listens for changes to .cs files in tthe provided folder and triggers
+        /* This Unity editor script listens for changes to .cs files in the provided folder and triggers
          * a script rebuild when they do. It is meant to slightly improve quality of life for developers,
          * as the build process starts as soon as the file is saved rather than when Unity gains focus.
          *
